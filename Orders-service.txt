@@ -1,0 +1,585 @@
+Orders service
+=================
+
+create repo in GitHub and clone it locally.
+
+go inside "Infra" repo directory and create orders folder inside infra/init/ and then inside orders folder create "init_orders.sql" 
+
+-- Create orders table
+CREATE TABLE IF NOT EXISTS orders (
+    order_id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL,
+    order_status VARCHAR(50),
+    payment_status VARCHAR(50),
+    order_total NUMERIC(10,2),
+    created_at TIMESTAMP
+);
+
+-- Create order_items table
+CREATE TABLE IF NOT EXISTS order_items (
+    order_item_id INTEGER PRIMARY KEY,
+    order_id INTEGER NOT NULL,
+    product_id INTEGER NOT NULL,
+    sku VARCHAR(50),
+    quantity INTEGER,
+    unit_price NUMERIC(10,2),
+    FOREIGN KEY (order_id) REFERENCES orders(order_id)
+);
+
+-- Import orders
+COPY orders(order_id, customer_id, order_status, payment_status, order_total, created_at)
+FROM '/docker-entrypoint-initdb.d/eci_orders.csv'
+DELIMITER ',' CSV HEADER;
+
+-- Import order items
+COPY order_items(order_item_id, order_id, product_id, sku, quantity, unit_price)
+FROM '/docker-entrypoint-initdb.d/eci_order_items.csv'
+DELIMITER ',' CSV HEADER;
+
+
+
+
+Go to Spring initializr, https://start.spring.io/
+
+| Field            | Value                                              |
+| ---------------- | -------------------------------------------------- |
+| **Project**      | Maven Project                                      |
+| **Language**     | Java                                               |
+| **Spring Boot**  | 3.2.x or latest stable                             |
+| **Group**        | `com.eci`                                          |
+| **Artifact**     | `orderservice`                                     |
+| **Name**         | `Orders Service`                                   |
+| **Description**  | `Microservice for managing orders and order items` |
+| **Package name** | `com.eci.orderservice`                             |
+| **Packaging**    | Jar                                                |
+| **Java version** | 17                                                 |
+
+Dependencies: spring boot dev tools, spring web, spring data jpa, PostgreSQL Driver, spring boot Actuator
+
+
+dependencies in pom.xml will be like this,
+
+<dependencies>
+    <!-- Web and REST support -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <!-- JPA and Hibernate -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+
+    <!-- PostgreSQL Database -->
+    <dependency>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
+        <scope>runtime</scope>
+    </dependency>
+
+    <!-- Actuator (for health checks, metrics) -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <!-- Lombok (optional, for reducing boilerplate) -->
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <optional>true</optional>
+    </dependency>
+
+    <!-- Testing -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
+    </dependency>
+</dependencies>
+
+
+Generate and extract the zip file and copy it to the orders-service folder.
+
+
+create separate directories model, service, repository, controller directories in src/main/java/com/eci/orderservice
+mkdir -p src/main/java/com/eci/orderservice/model src/main/java/com/eci/orderservice/repository  src/main/java/com/eci/orderservice/service  src/main/java/com/eci/orderservice/controller
+
+
+
+go to orders-service, create /src/main/java/com/eci/orderservice/model/ and create Order.java and OrderItem.java
+
+
+Order.java
+
+package com.eci.orderservice.model;
+
+import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Entity
+@Table(name = "orders")
+public class Order {
+
+    @Id
+    @Column(name = "order_id")
+    private Long orderId;
+
+    @Column(name = "customer_id", nullable = false)
+    private Long customerId;
+
+    @Column(name = "order_status")
+    private String orderStatus;
+
+    @Column(name = "payment_status")
+    private String paymentStatus;
+
+    @Column(name = "order_total")
+    private BigDecimal orderTotal;
+
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<OrderItem> items;
+
+    public Order() {}
+
+    // Getters and setters
+    public Long getOrderId() { return orderId; }
+    public void setOrderId(Long orderId) { this.orderId = orderId; }
+
+    public Long getCustomerId() { return customerId; }
+    public void setCustomerId(Long customerId) { this.customerId = customerId; }
+
+    public String getOrderStatus() { return orderStatus; }
+    public void setOrderStatus(String orderStatus) { this.orderStatus = orderStatus; }
+
+    public String getPaymentStatus() { return paymentStatus; }
+    public void setPaymentStatus(String paymentStatus) { this.paymentStatus = paymentStatus; }
+
+    public BigDecimal getOrderTotal() { return orderTotal; }
+    public void setOrderTotal(BigDecimal orderTotal) { this.orderTotal = orderTotal; }
+
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public List<OrderItem> getItems() { return items; }
+    public void setItems(List<OrderItem> items) { this.items = items; }
+}
+
+
+OrderItem.java
+
+package com.eci.orderservice.model;
+
+import jakarta.persistence.*;
+import java.math.BigDecimal;
+
+@Entity
+@Table(name = "order_items")
+public class OrderItem {
+
+    @Id
+    @Column(name = "order_item_id")
+    private Long orderItemId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id", nullable = false)
+    private Order order;
+
+    @Column(name = "product_id", nullable = false)
+    private Long productId;
+
+    @Column(name = "sku")
+    private String sku;
+
+    @Column(name = "quantity")
+    private Integer quantity;
+
+    @Column(name = "unit_price")
+    private BigDecimal unitPrice;
+
+    public OrderItem() {}
+
+    // Getters and setters
+    public Long getOrderItemId() { return orderItemId; }
+    public void setOrderItemId(Long orderItemId) { this.orderItemId = orderItemId; }
+
+    public Order getOrder() { return order; }
+    public void setOrder(Order order) { this.order = order; }
+
+    public Long getProductId() { return productId; }
+    public void setProductId(Long productId) { this.productId = productId; }
+
+    public String getSku() { return sku; }
+    public void setSku(String sku) { this.sku = sku; }
+
+    public Integer getQuantity() { return quantity; }
+    public void setQuantity(Integer quantity) { this.quantity = quantity; }
+
+    public BigDecimal getUnitPrice() { return unitPrice; }
+    public void setUnitPrice(BigDecimal unitPrice) { this.unitPrice = unitPrice; }
+}
+
+
+
+Go to orders-service/src/main/java/com/eci/com/orderservice/repository and create OrderRepository.java and OrderItemRepository.java files,
+
+OrderRepository.java
+
+package com.eci.orderservice.repository;
+
+import com.eci.orderservice.model.Order;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface OrderRepository extends JpaRepository<Order, Long> {
+}
+
+
+OrderItemRepository.java
+
+package com.eci.orderservice.repository;
+
+import com.eci.orderservice.model.OrderItem;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
+}
+
+
+
+
+Go to orders-service/src/main/java/com/eci/orderservice/service and create OrderService.java
+
+package com.eci.orderservice.service;
+
+import com.eci.orderservice.model.Order;
+import com.eci.orderservice.repository.OrderRepository;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class OrderService {
+
+    private final OrderRepository orderRepository;
+
+    public OrderService(OrderRepository orderRepository) {
+        this.orderRepository = orderRepository;
+    }
+
+    public List<Order> getAllOrders() {
+        return orderRepository.findAll();
+    }
+
+    public Optional<Order> getOrderById(Long id) {
+        return orderRepository.findById(id);
+    }
+}
+
+
+
+
+Go to orders-service/src/main/java/com/eci/orderservice/controller and create OrderController.java file,
+
+package com.eci.orderservice.controller;
+
+import com.eci.orderservice.model.Order;
+import com.eci.orderservice.service.OrderService;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.http.ResponseEntity;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/v1/orders")
+public class OrderController {
+
+    private final OrderService orderService;
+
+    public OrderController(OrderService orderService) {
+        this.orderService = orderService;
+    }
+
+    @GetMapping
+    public List<Order> getAllOrders() {
+        return orderService.getAllOrders();
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Order> getOrderById(@PathVariable Long id) {
+        return orderService.getOrderById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+}
+
+
+
+go to orders-service/src/main/resources/application.properties,
+
+spring.datasource.url=jdbc:postgresql://orders-db:5432/ordersdb
+spring.datasource.username=yash
+spring.datasource.password=yash123
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+
+server.port=8082
+
+
+
+
+Go to orders-service project folder and create Dockerfile,
+
+FROM openjdk:17-jdk-slim
+WORKDIR /app
+COPY target/orders-service-0.0.1-SNAPSHOT.jar app.jar
+EXPOSE 8082
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+
+
+
+create docker-compose.yml inside Infra folder,
+
+version: "3.8"
+services:
+  # ---------- Catalog ----------
+  catalog-db:
+    image: postgres:15
+    container_name: catalog-db
+    restart: always
+    environment:
+      POSTGRES_DB: catalogdb
+      POSTGRES_USER: yash
+      POSTGRES_PASSWORD: yash123
+    ports:
+      - "5434:5432"
+    volumes:
+      - catalog_data:/var/lib/postgresql/data
+      - ./init/catalog:/docker-entrypoint-initdb.d
+
+  catalog-service:
+    build:
+      context: ../catalog-service
+      dockerfile: Dockerfile
+    container_name: catalog-service
+    depends_on:
+      - catalog-db
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://catalog-db:5432/catalogdb
+      SPRING_DATASOURCE_USERNAME: yash
+      SPRING_DATASOURCE_PASSWORD: yash123
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SERVER_PORT: 8080
+
+  # ---------- Inventory ----------
+  inventory-db:
+    image: postgres:15
+    container_name: inventory-db
+    restart: always
+    environment:
+      POSTGRES_DB: inventorydb
+      POSTGRES_USER: yash
+      POSTGRES_PASSWORD: yash123
+    ports:
+      - "5433:5432"
+    volumes:
+      - inventory_data:/var/lib/postgresql/data
+      - ./init/inventory:/docker-entrypoint-initdb.d
+
+  inventory-service:
+    build:
+      context: ../inventory-service
+      dockerfile: Dockerfile
+    container_name: inventory-service
+    depends_on:
+      - inventory-db
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://inventory-db:5432/inventorydb
+      SPRING_DATASOURCE_USERNAME: yash
+      SPRING_DATASOURCE_PASSWORD: yash123
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SERVER_PORT: 8081
+
+
+  # ---------- Orders ----------
+  orders-db:
+    image: postgres:15
+    container_name: orders-db
+    restart: always
+    environment:
+      POSTGRES_DB: ordersdb
+      POSTGRES_USER: yash
+      POSTGRES_PASSWORD: yash123
+    ports:
+      - "5435:5432"
+    volumes:
+      - orders_data:/var/lib/postgresql/data
+      - ./init/orders:/docker-entrypoint-initdb.d
+
+  orders-service:
+    build:
+      context: ../orders-service
+      dockerfile: Dockerfile
+    container_name: orders-service
+    depends_on:
+      - orders-db
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://orders-db:5432/ordersdb
+      SPRING_DATASOURCE_USERNAME: yash
+      SPRING_DATASOURCE_PASSWORD: yash123
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SERVER_PORT: 8082
+
+
+volumes:
+  catalog_data:
+  inventory_data:
+  orders_data:
+
+
+
+
+
+Go to Infra folder and execute below command,
+docker compose up -d --build
+
+If other services are up and running, then just use below command,
+docker compose up -d --build orders-service
+
+with this command, only orders-service will build and run.
+
+
+
+
+docker exec -it orders-db psql -U yash -d ordersdb
+\dt
+SELECT COUNT(*) FROM orders;
+SELECT COUNT(*) FROM order_items;
+\q
+
+
+
+Folder structure should be like below,
+
+ECI-Microservices/
+├── orders-service/
+│   ├── src/main/java/com/eci/orderservice/
+│   │   ├── model/
+│   │   │   ├── Order.java
+│   │   │   └── OrderItem.java
+│   │   ├── repository/
+		├── OrderRepository.java
+    │   		└── OrderItemRepository.java
+│   │   ├── service/
+		OrderService.java
+│   │   ├── controller/
+		OrderController.java
+│   │   └── OrdersServiceApplication.java
+│   ├── src/main/resources/application.properties
+│   └── Dockerfile
+└── infra/
+    └── init/orders/
+        ├── eci_orders.csv
+        ├── eci_order_items.csv
+        └── init_orders.sql
+
+
+
+
+
+Able to access orders-service on the browser, but with messy json brackets(nested brackets) in the end.
+{"orderId":1,"items":[{"orderItemId":751,"order":{... endless nested "order" ...}}]}
+
+
+The reason:
+
+Your Order ↔ OrderItem relationship in JPA is bi-directional:
+
+Order has:
+@OneToMany(mappedBy = "order")
+private List<OrderItem> items;
+
+OrderItem has:
+@ManyToOne(fetch = FetchType.LAZY)
+private Order order;
+
+
+When Spring Boot tries to serialize this into JSON:
+
+It sees an Order, prints it.
+
+Inside that, it sees OrderItems, prints them.
+
+Inside each item, it finds another Order, prints that again…
+
+and it keeps nesting infinitely → resulting in the huge repeating JSON.
+
+
+
+Fix for this issue:
+
+Break the Recursive Loop with Jackson Annotations
+
+add below in Order.java file,
+
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
+
+
+Add below in OrderItem.java
+import com.fasterxml.jackson.annotation.JsonBackReference;
+
+
+Rebuild the package and re run the containers.
+
+
+
+if still issue persists, then in OrderItem.java, add these,
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+@JsonIgnore
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "order_id", nullable = false)
+private Order order;
+
+
+
+Now, able to see perfect JSON.
+===================================================================================================================================
+
+Why there is no OrderItemService.java and OrderItemController.java?
+
+In your Orders microservice, the order_items table is dependent on the orders table.
+That means:
+
+Each order item exists only within the context of an order.
+
+The relationship between Order ↔ OrderItem is already defined in your JPA model using:
+
+@OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+private List<OrderItem> items;
+
+
+
+So, when you query /v1/orders, you’re actually getting both:
+The order details
+And all its related order items in a nested JSON response (because of the List<OrderItem> relationship).
+
