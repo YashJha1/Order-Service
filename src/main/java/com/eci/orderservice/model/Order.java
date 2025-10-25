@@ -1,16 +1,41 @@
 package com.eci.orderservice.model;
 
-import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
+import lombok.*;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 @Entity
 @Table(name = "orders")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Order {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long orderId;
+
+    private Long customerId;
+
+    /*private String orderStatus;
+    private String paymentStatus;*/
+
+    private String status;
+
+    @Column(precision = 10, scale = 2)
+    private BigDecimal orderTotal;
+   // private Double orderTotal;
+    private OffsetDateTime createdAt;
+
+    @JsonManagedReference
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<OrderItem> items;
+
+    /* @Id
     @Column(name = "order_id")
     private Long orderId;
 
@@ -54,6 +79,6 @@ public class Order {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 
     public List<OrderItem> getItems() { return items; }
-    public void setItems(List<OrderItem> items) { this.items = items; }
+    public void setItems(List<OrderItem> items) { this.items = items; } */
 }
 

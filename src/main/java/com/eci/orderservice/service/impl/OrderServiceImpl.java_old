@@ -1,0 +1,147 @@
+package com.eci.orderservice.service.impl;
+
+import com.eci.orderservice.client.PaymentClient;
+import com.eci.orderservice.dto.PaymentRequest;
+import com.eci.orderservice.dto.PaymentResponse;
+import com.eci.orderservice.model.Order;
+import com.eci.orderservice.repository.OrderRepository;
+import com.eci.orderservice.service.OrderService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class OrderServiceImpl implements OrderService {
+
+    private final OrderRepository orderRepository;
+    private final PaymentClient paymentClient;
+
+    /** Create Order and trigger Payment **/
+    @Override
+    @Transactional
+    public Order createOrder(Order order) {
+        log.info("Creating new order for Customer ID: {}", order.getCustomerId());
+
+        order.setCreatedAt(OffsetDateTime.now());
+        order.setStatus("CREATED");
+
+        // Save order
+        Order savedOrder = orderRepository.save(order);
+        log.info("Order saved successfully with ID: {}", savedOrder.getOrderId());
+
+        // Trigger payment
+        try {
+            Double amountValue = (order.getOrderTotal() != null)
+                    ? order.getOrderTotal()
+                    : 0.0;
+
+            PaymentRequest paymentRequest = PaymentRequest.builder()
+                    .orderId(savedOrder.getOrderId().toString())
+                    .amount(BigDecimal.valueOf(amountValue))
+                    .currency("INR")
+                    .paymentMethod("UPI")
+                    .idempotencyKey(UUID.randomUUID().toString())
+                    .build();
+
+            PaymentResponse paymentResponse = paymentClient.createPayment(paymentRequest);
+
+            if (paymentResponse != null) {
+                log.info("✅ Payment triggered for Order ID: {} | Payment ID: {} | Status: {}",
+                        savedOrder.getOrderId(),
+                        paymentResponse.getPaymentId(),
+                        paymentResponse.getStatus());
+            } else {
+                log.warn("⚠️ Payment trigger failed for Order ID: {}", savedOrder.getOrderId());
+            }
+
+        } catch (Exception e) {
+            log.error("❌ Payment service call failed for Order ID: {} | Reason: {}",
+                    savedOrder.getOrderId(), e.getMessage());
+        }
+
+        return savedOrder;
+    }
+
+    /** Fetch all orders **/
+    @Override
+    public List<Order> getAllOrders() {
+        return orderRepository.findAll();
+    }
+
+    /** Fetch order by ID **/
+    @Override
+    public Optional<Order> getOrderById(Long id) {
+        return orderRepository.findById(id);
+    }
+
+    /** Update an existing order **/
+    @Override
+    @Transactional
+    public Order updateOrder(Long id, Order updatedOrder) {
+        return orderRepository.findById(id)
+                .map(existing -> {
+                    existing.setStatus(updatedOrder.getStatus());
+                    if (updatedOrder.getOrderTotal() != null) {
+                        existing.setOrderTotal(updatedOrder.getOrderTotal());
+                    } else {
+                        existing.setOrderTotal(0.0);
+                    }
+                    log.info("♻️ Updating Order ID: {} | New Status: {}", id, updatedOrder.getStatus());
+                    return orderRepository.save(existing);
+                })
+                .orElseThrow(() -> new RuntimeException("Order not found with ID: " + id));
+    }
+
+    /** Delete order **/
+    @Override
+    @Transactional
+    public void deleteOrder(Long id) {
+        log.info("🗑️ Deleting order with ID: {}", id);
+        orderRepository.deleteById(id);
+    }
+
+    /** Filter orders by status **/
+    @Override
+    public List<Order> getOrdersByStatus(String status) {
+        log.info("Fetching orders with status: {}", status);
+        return orderRepository.findByStatus(status);
+    }
+
+    /** Filter orders by customer + status **/
+    @Override
+    public List<Order> getOrdersByCustomerAndStatus(Long customerId, String status) {
+        log.info("Fetching orders for Customer ID: {} with Status: {}", customerId, status);
+        return orderRepository.findByCustomerIdAndStatus(customerId, status);
+    }
+
+    /** Filter orders by customer **/
+    @Override
+    public List<Order> getOrdersByCustomer(Long customerId) {
+        log.info("Fetching all orders for Customer ID: {}", customerId);
+        return orderRepository.findByCustomerId(customerId);
+    }
+
+    /** Filter orders by date range **/
+    @Override
+    public List<Order> getOrdersByDateRange(OffsetDateTime start, OffsetDateTime end) {
+        log.info("Fetching orders between {} and {}", start, end);
+        return orderRepository.findByCreatedAtBetween(start, end);
+    }
+
+    /** Fetch payments for a given order **/
+    @Override
+    public List<PaymentResponse> getPaymentsByOrderId(Long orderId) {
+        log.info("Fetching payments for Order ID: {}", orderId);
+        return paymentClient.getPaymentsByOrderId(String.valueOf(orderId));
+    }
+}
+

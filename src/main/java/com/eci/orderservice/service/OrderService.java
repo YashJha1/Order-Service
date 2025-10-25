@@ -1,27 +1,35 @@
 package com.eci.orderservice.service;
 
+import com.eci.orderservice.dto.PaymentResponse;
 import com.eci.orderservice.model.Order;
-import com.eci.orderservice.repository.OrderRepository;
-import org.springframework.stereotype.Service;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 
-@Service
-public class OrderService {
+public interface OrderService {
 
-    private final OrderRepository orderRepository;
+    // Basic CRUD
+    List<Order> getAllOrders();
 
-    public OrderService(OrderRepository orderRepository) {
-        this.orderRepository = orderRepository;
-    }
+    Optional<Order> getOrderById(Long orderId);
 
-    public List<Order> getAllOrders() {
-        return orderRepository.findAll();
-    }
+    Order createOrder(Order order);
 
-    public Optional<Order> getOrderById(Long id) {
-        return orderRepository.findById(id);
-    }
+    Order updateOrder(Long orderId, Order updatedOrder);
+
+    void deleteOrder(Long orderId);
+
+    // Filters
+    List<Order> getOrdersByStatus(String status);
+
+    List<Order> getOrdersByCustomer(Long customerId);
+
+    List<Order> getOrdersByCustomerAndStatus(Long customerId, String status);
+
+    List<Order> getOrdersByDateRange(OffsetDateTime startDate, OffsetDateTime endDate);
+
+    // Payment integration
+    List<PaymentResponse> getPaymentsByOrderId(Long orderId);
 }
 
