@@ -1,113 +1,88 @@
 package com.eci.orderservice.controller;
-
-import com.eci.orderservice.dto.PaymentResponse;
+import com.eci.orderservice.dto.OrderRequest;
+import com.eci.orderservice.dto.OrderResponse;
 import com.eci.orderservice.model.Order;
-import com.eci.orderservice.service.OrderService;
-import com.eci.orderservice.client.PaymentClient;
+import com.eci.orderservice.repository.OrderRepository;
+import com.eci.orderservice.service.OrderService;  // ✅ import this
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-
-import java.net.URI;
-import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
+import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/v1/orders")
 @RequiredArgsConstructor
-@Slf4j
 public class OrderController {
 
-    private final OrderService orderService;
-    private final PaymentClient paymentClient;
+    private final OrderRepository orderRepository;
+    private final OrderService orderService; // ✅ Add this dependency
 
-    /** GET all or filtered orders **/
+    // ✅ 1. Get all orders
     @GetMapping
-    public List<Order> getOrders(
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) Long customerId,
-            @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate
-    ) {
-        if (status != null && customerId != null) {
-            return orderService.getOrdersByCustomerAndStatus(customerId, status);
-        } else if (status != null) {
-            return orderService.getOrdersByStatus(status);
-        } else if (customerId != null) {
-            return orderService.getOrdersByCustomer(customerId);
-        } else if (startDate != null && endDate != null) {
-            OffsetDateTime start = OffsetDateTime.parse(startDate);
-            OffsetDateTime end = OffsetDateTime.parse(endDate);
-            return orderService.getOrdersByDateRange(start, end);
+    public List<Order> getAllOrders() {
+        return orderRepository.findAll();
+    }
+
+    // ✅ 2. Get order by ID
+    @GetMapping("/{orderId}")
+    public Optional<Order> getOrderById(@PathVariable Long orderId) {
+        return orderRepository.findById(orderId);
+    }
+
+    // ✅ 3. Delete order by ID
+    @DeleteMapping("/{orderId}")
+    public String deleteOrder(@PathVariable Long orderId) {
+        if (orderRepository.existsById(orderId)) {
+            orderRepository.deleteById(orderId);
+            return "Order ID " + orderId + " deleted successfully.";
         } else {
-            return orderService.getAllOrders();
+            return "Order ID " + orderId + " not found.";
         }
     }
 
-    /** Get order by ID **/
-    @GetMapping("/{id}")
-    public ResponseEntity<Order> getOrderById(@PathVariable Long id) {
-        return orderService.getOrderById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    /** Create new order **/
-    @PostMapping
-    public ResponseEntity<Order> createOrder(@RequestBody Order order) {
-        try {
-            Order savedOrder = orderService.createOrder(order);
-            log.info("Order created successfully with ID: {}", savedOrder.getOrderId());
-            return ResponseEntity
-                    .created(URI.create("/v1/orders/" + savedOrder.getOrderId()))
-                    .body(savedOrder);
-        } catch (Exception e) {
-            log.error("Failed to create order: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
-    }
-
-    /** Update order **/
-    @PutMapping("/{id}")
-    public ResponseEntity<Order> updateOrder(@PathVariable Long id, @RequestBody Order updatedOrder) {
-        try {
-            Order order = orderService.updateOrder(id, updatedOrder);
-            log.info("Order updated successfully for ID: {}", id);
-            return ResponseEntity.ok(order);
-        } catch (RuntimeException e) {
-            log.error("Order not found with ID: {}", id);
-            return ResponseEntity.notFound().build();
-        } catch (Exception e) {
-            log.error("Failed to update order: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
-    }
-
-    /** Delete order **/
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteOrder(@PathVariable Long id) {
-        try {
-            orderService.deleteOrder(id);
-            log.info("Order deleted successfully for ID: {}", id);
-            return ResponseEntity.noContent().build();
-        } catch (Exception e) {
-            log.error("Failed to delete order: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
-    }
-
-    /** Get payments for order **/
+    // ✅ 4. Get Payments for a specific Order
     @GetMapping("/{orderId}/payments")
-    public ResponseEntity<?> getPaymentsForOrder(@PathVariable Long orderId) {
-        List<PaymentResponse> payments = orderService.getPaymentsByOrderId(orderId);
-        if (payments.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("message", "No payment found for order " + orderId));
-        }
-        return ResponseEntity.ok(payments);
+    public Object getPaymentsForOrder(@PathVariable Long orderId) {
+        return orderService.getPaymentsByOrderId(orderId);
+    }
+
+     // ✅ 5. Create a new order
+    @PostMapping
+    public OrderResponse createOrder(@RequestBody OrderRequest request) {
+        return orderService.createOrder(request);
+    }
+
+    //@PostMapping
+    //public OrderResponse createOrder(@RequestBody OrderRequest request)
+
+
+    // ✅ 6. Get orders by status (e.g. COMPLETED, FAILED, PENDING)
+    @GetMapping("/status/{status}")
+    public List<Order> getOrdersByStatus(@PathVariable String status) {
+    	return orderRepository.findByOrderStatus(status.toUpperCase());
+    }
+
+// ✅ 7. Get orders within a date range
+    @GetMapping("/daterange")
+    public List<Order> getOrdersByDateRange(@RequestParam String start,
+                                        @RequestParam String end) {
+    	LocalDateTime startDate = LocalDateTime.parse(start);
+    	LocalDateTime endDate = LocalDateTime.parse(end);
+    	return orderRepository.findOrdersByDateRange(startDate, endDate);
+    }
+    
+    // ✅ 8. Get all orders for a specific customer
+    @GetMapping("/customer/{customerId}")
+    public List<Order> getOrdersByCustomer(@PathVariable Long customerId) {
+        return orderRepository.findByCustomerId(customerId);
+    }
+
+    // ✅ 9. Get all orders for a specific customer AND status
+    @GetMapping("/customer/{customerId}/status/{status}")
+    public List<Order> getOrdersByCustomerAndStatus(@PathVariable Long customerId,
+                                                    @PathVariable String status) {
+        return orderRepository.findByCustomerIdAndOrderStatus(customerId, status.toUpperCase());
     }
 }
 

@@ -1,0 +1,78 @@
+package com.eci.orderservice.controller;
+
+import com.eci.orderservice.dto.OrderRequest;
+import com.eci.orderservice.dto.PaymentResponse;
+import com.eci.orderservice.model.Order;
+import com.eci.orderservice.service.OrderService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Optional;
+
+@RestController
+@RequestMapping("/v1/orders")
+@RequiredArgsConstructor
+public class OrderController {
+
+    private final OrderService orderService;
+
+    @GetMapping
+    public List<Order> getAllOrders() {
+        return orderService.getAllOrders();
+    }
+
+    @GetMapping("/{orderId}")
+    public ResponseEntity<Order> getOrderById(@PathVariable Long orderId) {
+        Order order = orderService.getOrderById(orderId);
+        return order != null ? ResponseEntity.ok(order) : ResponseEntity.notFound().build();
+    }
+
+    @GetMapping("/customer/{customerId}")
+    public List<Order> getOrdersByCustomer(@PathVariable Long customerId) {
+        return orderService.getOrdersByCustomer(customerId);
+    }
+
+    @GetMapping("/status/{status}")
+    public List<Order> getOrdersByStatus(@PathVariable String status) {
+        return orderService.getOrdersByStatus(status);
+    }
+
+    @GetMapping("/customer/{customerId}/status/{status}")
+    public List<Order> getOrdersByCustomerAndStatus(@PathVariable Long customerId, @PathVariable String status) {
+        return orderService.getOrdersByCustomerAndStatus(customerId, status);
+    }
+
+    @GetMapping("/daterange")
+    public List<Order> getOrdersByDateRange(@RequestParam OffsetDateTime start,
+                                            @RequestParam OffsetDateTime end) {
+        return orderService.getOrdersByDateRange(start, end);
+    }
+
+    @PostMapping
+    public ResponseEntity<Order> createOrder(@RequestBody OrderRequest orderRequest) {
+        Order created = orderService.createOrder(orderRequest);
+        return ResponseEntity.ok(created);
+    }
+
+    @PutMapping("/{orderId}")
+    public ResponseEntity<Order> updateOrder(@PathVariable Long orderId, @RequestBody Order order) {
+        Order updated = orderService.updateOrder(orderId, order);
+        return updated != null ? ResponseEntity.ok(updated) : ResponseEntity.notFound().build();
+    }
+
+    @DeleteMapping("/{orderId}")
+    public ResponseEntity<Void> deleteOrder(@PathVariable Long orderId) {
+        orderService.deleteOrder(orderId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{orderId}/payments")
+    public ResponseEntity<PaymentResponse> getPaymentByOrder(@PathVariable Long orderId) {
+        PaymentResponse response = orderService.getPaymentsByOrderId(orderId);
+        return ResponseEntity.ok(response);
+    }
+}
+

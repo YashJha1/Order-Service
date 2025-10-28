@@ -1,0 +1,97 @@
+package com.eci.orderservice.service.impl;
+
+import com.eci.orderservice.client.InventoryClient;
+import com.eci.orderservice.client.PaymentClient;
+import com.eci.orderservice.dto.*;
+import com.eci.orderservice.model.Order;
+import com.eci.orderservice.repository.OrderRepository;
+import com.eci.orderservice.service.OrderService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDateTime;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class OrderServiceImpl implements OrderService {
+
+    private final OrderRepository orderRepository;
+    private final PaymentClient paymentClient;
+    private final InventoryClient inventoryClient;
+
+    @Override
+    @Transactional
+    public OrderResponse createOrder(OrderRequest request) {
+        log.info("Creating order for customer: {}", request.getCustomerId());
+
+        Order order = Order.builder()
+                .customerId(request.getCustomerId())
+                .orderStatus("PENDING")
+                .paymentStatus("NOT_INITIATED")
+                .orderTotal(0.0)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        Order savedOrder = orderRepository.save(order);
+        double totalAmount = 0.0;
+
+        for (OrderLineDto line : request.getLines()) {
+            InventoryRequest invReq = new InventoryRequest(line.getSku(), line.getQuantity());
+            InventoryResponse invRes = inventoryClient.reserveStock(invReq);
+
+            if (!invRes.isAvailable()) {
+                savedOrder.setOrderStatus("FAILED");
+                savedOrder.setPaymentStatus("NOT_APPLICABLE");
+                orderRepository.save(savedOrder);
+                throw new RuntimeException("Product " + line.getSku() + " is out of stock!");
+            }
+
+            totalAmount += line.getQuantity() * 100.0; // temporary mock price
+        }
+
+        savedOrder.setOrderTotal(totalAmount);
+        savedOrder.setOrderStatus("PROCESSING");
+        orderRepository.save(savedOrder);
+
+        try {
+            PaymentRequest paymentRequest = PaymentRequest.builder()
+                    .orderId(savedOrder.getOrderId())
+                    .amount(totalAmount)
+                    .method("UPI")
+                    .build();
+
+            PaymentResponse paymentResponse = paymentClient.processPayment(paymentRequest);
+            savedOrder.setPaymentStatus(paymentResponse.getStatus());
+            savedOrder.setOrderStatus("COMPLETED");
+        } catch (Exception e) {
+            log.error("Payment service error: {}", e.getMessage());
+            savedOrder.setPaymentStatus("FAILED");
+            savedOrder.setOrderStatus("PAYMENT_FAILED");
+        }
+
+        orderRepository.save(savedOrder);
+
+        return OrderResponse.builder()
+                .orderId(savedOrder.getOrderId())
+                .orderStatus(savedOrder.getOrderStatus())
+                .paymentStatus(savedOrder.getPaymentStatus())
+                .orderTotal(savedOrder.getOrderTotal())
+                .build();
+    }
+
+    @Override
+    public OrderResponse getPaymentsByOrderId(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found with ID: " + orderId));
+
+        return OrderResponse.builder()
+                .orderId(order.getOrderId())
+                .orderStatus(order.getOrderStatus())
+                .paymentStatus(order.getPaymentStatus())
+                .orderTotal(order.getOrderTotal())
+                .build();
+    }
+}
+

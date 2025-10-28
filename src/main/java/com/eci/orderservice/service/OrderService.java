@@ -1,35 +1,51 @@
-package com.eci.orderservice.service;
+/*package com.eci.orderservice.service;
 
+import com.eci.orderservice.dto.OrderRequest;
 import com.eci.orderservice.dto.PaymentResponse;
 import com.eci.orderservice.model.Order;
 
-import java.time.OffsetDateTime;
+import java.time.*;
 import java.util.List;
-import java.util.Optional;
 
 public interface OrderService {
 
-    // Basic CRUD
-    List<Order> getAllOrders();
+    Order createOrder(OrderRequest orderRequest);
 
-    Optional<Order> getOrderById(Long orderId);
+    PaymentResponse getOrderPaymentStatus(Long orderId);
 
-    Order createOrder(Order order);
+    // Additional query methods
+    List<Order> getOrdersByCustomerAndStatus(Long customerId, String status);
 
-    Order updateOrder(Long orderId, Order updatedOrder);
-
-    void deleteOrder(Long orderId);
-
-    // Filters
     List<Order> getOrdersByStatus(String status);
 
     List<Order> getOrdersByCustomer(Long customerId);
 
-    List<Order> getOrdersByCustomerAndStatus(Long customerId, String status);
+    List<Order> getOrdersByDateRange(OffsetDateTime start, OffsetDateTime end);
 
-    List<Order> getOrdersByDateRange(OffsetDateTime startDate, OffsetDateTime endDate);
+    List<Order> getAllOrders();
 
-    // Payment integration
-    List<PaymentResponse> getPaymentsByOrderId(Long orderId);
+    Order getOrderById(Long orderId);
+
+    Order updateOrder(Long orderId, Order order);
+
+    void deleteOrder(Long orderId);
+
+    PaymentResponse getPaymentsByOrderId(Long orderId);
+}
+*/
+
+package com.eci.orderservice.service;
+
+import com.eci.orderservice.dto.OrderRequest;
+import com.eci.orderservice.dto.OrderResponse;
+
+public interface OrderService {
+
+    // Create new order
+    OrderResponse createOrder(OrderRequest request);
+
+    // Optional helper (for your API GET call)
+    //OrderResponse getPaymentsByOrderId(Long orderId);
+    Object getPaymentsByOrderId(Long orderId);
 }
 

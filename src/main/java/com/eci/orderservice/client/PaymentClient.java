@@ -7,13 +7,13 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@FeignClient(name = "payments-service", url = "${payments.service.url}")
+@FeignClient(name = "payment-service", url = "http://payments-service:8083/v1/payments")
 public interface PaymentClient {
 
     @PostMapping("/v1/payments")
-    PaymentResponse createPayment(@RequestBody PaymentRequest paymentRequest);
+    PaymentResponse processPayment(@RequestBody PaymentRequest paymentRequest);
 
-    @GetMapping("/v1/payments/order/{orderId}")
-    List<PaymentResponse> getPaymentsByOrderId(@PathVariable("orderId") String orderId);
+    @GetMapping("/v1/payments/{orderId}")
+    PaymentResponse getPaymentByOrderId(@PathVariable("orderId") Long orderId);
 }
 

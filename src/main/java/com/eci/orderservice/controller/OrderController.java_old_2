@@ -1,0 +1,43 @@
+package com.eci.orderservice.controller;
+
+import com.eci.orderservice.dto.OrderRequest;
+import com.eci.orderservice.dto.OrderResponse;
+import com.eci.orderservice.service.OrderService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/v1/orders")
+@RequiredArgsConstructor
+public class OrderController {
+
+    private final OrderService orderService;
+
+    // ✅ 1️⃣ Create a new order (this will trigger inventory + payment)
+    @PostMapping
+    public ResponseEntity<OrderResponse> createOrder(@RequestBody OrderRequest request) {
+        OrderResponse response = orderService.createOrder(request);
+        return ResponseEntity.ok(response);
+    }
+
+    // ✅ 2️⃣ Get order + payment info by orderId
+    @GetMapping("/{orderId}/payments")
+    public ResponseEntity<OrderResponse> getPaymentsByOrderId(@PathVariable Long orderId) {
+        OrderResponse response = orderService.getPaymentsByOrderId(orderId);
+        return ResponseEntity.ok(response);
+    }
+
+    // ✅ 3️⃣ Health check / sanity endpoint
+    @GetMapping("/health")
+    public ResponseEntity<String> healthCheck() {
+        return ResponseEntity.ok("Order Service is running fine ✅");
+    }
+
+    @GetMapping
+    public List<Order> getAllOrders() {
+    return orderRepository.findAll();
+    } 
+
+}
+

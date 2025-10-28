@@ -1,0 +1,48 @@
+package com.eci.orderservice.controller;
+
+import com.eci.orderservice.model.Order;
+import com.eci.orderservice.repository.OrderRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+import java.util.Optional;
+
+@RestController
+@RequestMapping("/v1/orders")
+@RequiredArgsConstructor
+public class OrderController {
+
+    private final OrderRepository orderRepository;
+
+    // ✅ 1. Get all orders
+    @GetMapping
+    public List<Order> getAllOrders() {
+        return orderRepository.findAll();
+    }
+
+    // ✅ 2. Get order by ID
+    @GetMapping("/{orderId}")
+    public Optional<Order> getOrderById(@PathVariable Long orderId) {
+        return orderRepository.findById(orderId);
+    }
+
+    // ✅ 3. Delete order by ID
+    @DeleteMapping("/{orderId}")
+    public String deleteOrder(@PathVariable Long orderId) {
+        if (orderRepository.existsById(orderId)) {
+            orderRepository.deleteById(orderId);
+            return "Order ID " + orderId + " deleted successfully.";
+        } else {
+            return "Order ID " + orderId + " not found.";
+        }
+    
+    }
+
+    @GetMapping("/{orderId}/payments")
+    public Object getPaymentsForOrder(@PathVariable Long orderId) {
+    	return orderService.getPaymentsByOrderId(orderId);
+    }
+
+}
+
+

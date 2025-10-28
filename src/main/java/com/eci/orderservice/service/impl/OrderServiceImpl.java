@@ -1,21 +1,22 @@
 package com.eci.orderservice.service.impl;
 
+import com.eci.orderservice.client.CatalogClient;
+import com.eci.orderservice.client.InventoryClient;
 import com.eci.orderservice.client.PaymentClient;
-import com.eci.orderservice.dto.PaymentRequest;
-import com.eci.orderservice.dto.PaymentResponse;
+import com.eci.orderservice.dto.*;
 import com.eci.orderservice.model.Order;
 import com.eci.orderservice.repository.OrderRepository;
 import com.eci.orderservice.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
-import java.math.BigDecimal;
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -23,104 +24,78 @@ import java.util.UUID;
 public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
+    private final InventoryClient inventoryClient;
     private final PaymentClient paymentClient;
+    private final CatalogClient catalogClient;
+    private final RestTemplate restTemplate; // ✅ added for inter-service calls
 
-    /** Create Order and trigger payment **/
     @Override
     @Transactional
-    public Order createOrder(Order order) {
-        log.info("Creating new order for Customer ID: {}", order.getCustomerId());
+    public OrderResponse createOrder(OrderRequest request) {
+        log.info("Creating order for customer: {}", request.getCustomerId());
 
-        order.setCreatedAt(OffsetDateTime.now());
-        order.setStatus("CREATED");
+        double totalAmount = 0.0;
 
-        // Save order first
-        Order savedOrder = orderRepository.save(order);
-        log.info("Order saved successfully with ID: {}", savedOrder.getOrderId());
-
-        // Trigger payment
-        try {
-            BigDecimal amount = order.getOrderTotal() != null ? order.getOrderTotal() : BigDecimal.ZERO;
-
-            PaymentRequest paymentRequest = PaymentRequest.builder()
-                    .orderId(savedOrder.getOrderId().toString())
-                    .amount(amount)
-                    .currency("INR")
-                    .paymentMethod("UPI")
-                    .idempotencyKey(UUID.randomUUID().toString())
-                    .build();
-
-            PaymentResponse paymentResponse = paymentClient.createPayment(paymentRequest);
-
-            if (paymentResponse != null) {
-                log.info("Payment triggered for Order ID: {} | Payment ID: {} | Status: {}",
-                        savedOrder.getOrderId(),
-                        paymentResponse.getPaymentId(),
-                        paymentResponse.getStatus());
-            } else {
-                log.warn("Payment trigger failed for Order ID: {}", savedOrder.getOrderId());
-            }
-
-        } catch (Exception e) {
-            log.error("Payment service call failed for Order ID: {} | Reason: {}", savedOrder.getOrderId(), e.getMessage());
+        // ✅ Fetch prices from Catalog and compute total
+        for (OrderLineDto line : request.getLines()) {
+            CatalogResponse catalogProduct = catalogClient.getProductById(line.getProductId());
+            double productPrice = catalogProduct.getPrice();
+            totalAmount += productPrice * line.getQuantity();
+            log.info("Fetched price {} for product {} ({} units)", productPrice, line.getSku(), line.getQuantity());
         }
 
-        return savedOrder;
+        // ✅ Check inventory
+        InventoryRequest inventoryRequest = InventoryRequest.builder()
+                .sku(request.getLines().get(0).getSku())
+                .quantity(request.getLines().get(0).getQuantity())
+                .warehouse(request.getLines().get(0).getWarehouse())
+                .build();
+
+        InventoryResponse inventoryResponse = inventoryClient.reserveStock(inventoryRequest);
+
+        // ✅ Create order in DB
+        Order order = Order.builder()
+                .customerId(request.getCustomerId())
+                .orderStatus("CREATED")
+                .paymentStatus("PENDING")
+                .orderTotal(totalAmount)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        orderRepository.save(order);
+
+        // ✅ Process payment via PaymentClient
+        PaymentRequest paymentRequest = PaymentRequest.builder()
+                .orderId(order.getOrderId())
+                .amount(totalAmount)
+                .method("UPI")
+                .build();
+
+        PaymentResponse paymentResponse = paymentClient.processPayment(paymentRequest);
+
+        order.setPaymentStatus(paymentResponse.getStatus());
+        order.setOrderStatus(paymentResponse.getStatus().equals("SUCCESS") ? "COMPLETED" : "FAILED");
+        orderRepository.save(order);
+
+        return OrderResponse.builder()
+                .orderId(order.getOrderId())
+                .orderStatus(order.getOrderStatus())
+                .paymentStatus(order.getPaymentStatus())
+                .orderTotal(order.getOrderTotal())
+                .build();
     }
 
+    // ✅ Correct single version of getPaymentsByOrderId (calls payments microservice)
     @Override
-    public List<Order> getAllOrders() {
-        return orderRepository.findAll();
-    }
-
-    @Override
-    public Optional<Order> getOrderById(Long id) {
-        return orderRepository.findById(id);
-    }
-
-    @Override
-    @Transactional
-    public Order updateOrder(Long id, Order updatedOrder) {
-        return orderRepository.findById(id)
-                .map(existing -> {
-                    existing.setStatus(updatedOrder.getStatus());
-                    existing.setOrderTotal(updatedOrder.getOrderTotal());
-                    log.info("Updating Order ID: {} | New Status: {}", id, updatedOrder.getStatus());
-                    return orderRepository.save(existing);
-                })
-                .orElseThrow(() -> new RuntimeException("Order not found with ID: " + id));
-    }
-
-    @Override
-    @Transactional
-    public void deleteOrder(Long id) {
-        log.info("Deleting order with ID: {}", id);
-        orderRepository.deleteById(id);
-    }
-
-    @Override
-    public List<Order> getOrdersByStatus(String status) {
-        return orderRepository.findByStatus(status);
-    }
-
-    @Override
-    public List<Order> getOrdersByCustomerAndStatus(Long customerId, String status) {
-        return orderRepository.findByCustomerIdAndStatus(customerId, status);
-    }
-
-    @Override
-    public List<Order> getOrdersByCustomer(Long customerId) {
-        return orderRepository.findByCustomerId(customerId);
-    }
-
-    @Override
-    public List<Order> getOrdersByDateRange(OffsetDateTime start, OffsetDateTime end) {
-        return orderRepository.findByCreatedAtBetween(start, end);
-    }
-
-    @Override
-    public List<PaymentResponse> getPaymentsByOrderId(Long orderId) {
-        return paymentClient.getPaymentsByOrderId(String.valueOf(orderId));
+    public Object getPaymentsByOrderId(Long orderId) {
+        String url = "http://payments-service:8083/v1/payments?orderId=" + orderId;
+        try {
+            ResponseEntity<Object> response = restTemplate.getForEntity(url, Object.class);
+            return response.getBody();
+        } catch (Exception e) {
+            log.error("Error fetching payments for order {}: {}", orderId, e.getMessage());
+            return Map.of("error", "Payment service not reachable or order not found");
+        }
     }
 }
 

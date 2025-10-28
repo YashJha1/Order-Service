@@ -1,11 +1,30 @@
+/*package com.eci.orderservice.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "orders")
+@Data
+public class Order {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long orderId;
+
+    private Long customerId;
+    private String orderStatus;
+    private String paymentStatus;
+    private Double orderTotal;
+    private LocalDateTime createdAt;
+}
+*/
+
 package com.eci.orderservice.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-import java.math.BigDecimal;
-import java.time.OffsetDateTime;
-import java.util.List;
-import com.fasterxml.jackson.annotation.JsonManagedReference;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "orders")
@@ -16,26 +35,15 @@ import com.fasterxml.jackson.annotation.JsonManagedReference;
 public class Order {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long orderId;
-
-    private Long customerId;
-
-    /*private String orderStatus;
-    private String paymentStatus;*/
-
-    private String status;
-
-    @Column(precision = 10, scale = 2)
-    private BigDecimal orderTotal;
-   // private Double orderTotal;
-    private OffsetDateTime createdAt;
-
-    @JsonManagedReference
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<OrderItem> items;
-
-    /* @Id
+    @GeneratedValue(
+        strategy = GenerationType.SEQUENCE,
+        generator = "orders_order_id_seq"
+    )
+    @SequenceGenerator(
+        name = "orders_order_id_seq",
+        sequenceName = "orders_order_id_seq",
+        allocationSize = 1
+    )
     @Column(name = "order_id")
     private Long orderId;
 
@@ -49,36 +57,9 @@ public class Order {
     private String paymentStatus;
 
     @Column(name = "order_total")
-    private BigDecimal orderTotal;
+    private Double orderTotal;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
-
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<OrderItem> items;
-
-    public Order() {}
-
-    // Getters and setters
-    public Long getOrderId() { return orderId; }
-    public void setOrderId(Long orderId) { this.orderId = orderId; }
-
-    public Long getCustomerId() { return customerId; }
-    public void setCustomerId(Long customerId) { this.customerId = customerId; }
-
-    public String getOrderStatus() { return orderStatus; }
-    public void setOrderStatus(String orderStatus) { this.orderStatus = orderStatus; }
-
-    public String getPaymentStatus() { return paymentStatus; }
-    public void setPaymentStatus(String paymentStatus) { this.paymentStatus = paymentStatus; }
-
-    public BigDecimal getOrderTotal() { return orderTotal; }
-    public void setOrderTotal(BigDecimal orderTotal) { this.orderTotal = orderTotal; }
-
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-
-    public List<OrderItem> getItems() { return items; }
-    public void setItems(List<OrderItem> items) { this.items = items; } */
 }
 

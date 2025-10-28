@@ -1,0 +1,135 @@
+package com.eci.orderservice.service.impl;
+
+import com.eci.orderservice.client.PaymentClient;
+import com.eci.orderservice.dto.*;
+import com.eci.orderservice.model.Order;
+import com.eci.orderservice.model.OrderItem;
+import com.eci.orderservice.repository.OrderRepository;
+import com.eci.orderservice.repository.OrderItemRepository;
+import com.eci.orderservice.service.OrderService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.*;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class OrderServiceImpl implements OrderService {
+
+    private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
+    private final PaymentClient paymentClient;
+
+    @Override
+    @Transactional
+    public Order createOrder(OrderRequest orderRequest) {
+        log.info("Creating order for customer: {}", orderRequest.getCustomerId());
+
+        Order order = new Order();
+        order.setCustomerId(orderRequest.getCustomerId());
+        order.setOrderStatus("CREATED");
+        order.setPaymentStatus("PENDING");
+        order.setCreatedAt(LocalDateTime.now());
+        order.setOrderTotal(0.0);
+
+        Order savedOrder = orderRepository.save(order);
+
+        double totalAmount = 0.0;
+        for (OrderLineDto line : orderRequest.getLines()) {
+            OrderItem item = new OrderItem();
+            item.setOrder(savedOrder);
+            item.setProductId(line.getProductId());
+            item.setSku(line.getSku());
+            item.setQuantity(line.getQuantity());
+            item.setPrice(100.0);
+            item.setTotal(item.getPrice() * item.getQuantity());
+            orderItemRepository.save(item);
+            totalAmount += item.getTotal();
+        }
+
+        savedOrder.setOrderTotal(totalAmount);
+        orderRepository.save(savedOrder);
+
+        PaymentRequest paymentRequest = new PaymentRequest();
+        paymentRequest.setOrderId(savedOrder.getOrderId());
+        paymentRequest.setAmount(totalAmount);
+        paymentRequest.setMethod("UPI");
+
+        PaymentResponse paymentResponse = paymentClient.processPayment(paymentRequest);
+
+        if (paymentResponse != null && "SUCCESS".equalsIgnoreCase(paymentResponse.getStatus())) {
+            savedOrder.setPaymentStatus("SUCCESS");
+            savedOrder.setOrderStatus("CONFIRMED");
+        } else {
+            savedOrder.setPaymentStatus("FAILED");
+            savedOrder.setOrderStatus("CANCELLED");
+        }
+
+        orderRepository.save(savedOrder);
+        return savedOrder;
+    }
+
+    @Override
+    public PaymentResponse getOrderPaymentStatus(Long orderId) {
+        return paymentClient.getPaymentByOrderId(orderId);
+    }
+
+    @Override
+    public List<Order> getOrdersByCustomerAndStatus(Long customerId, String status) {
+        return orderRepository.findByCustomerIdAndOrderStatus(customerId, status);
+    }
+
+    @Override
+    public List<Order> getOrdersByStatus(String status) {
+        return orderRepository.findByOrderStatus(status);
+    }
+
+    @Override
+    public List<Order> getOrdersByCustomer(Long customerId) {
+        return orderRepository.findByCustomerId(customerId);
+    }
+
+    @Override
+    public List<Order> getOrdersByDateRange(OffsetDateTime start, OffsetDateTime end) {
+        return orderRepository.findByCreatedAtBetween(start, end);
+    }
+
+    @Override
+    public List<Order> getAllOrders() {
+        return orderRepository.findAll();
+    }
+
+    @Override
+    public Order getOrderById(Long orderId) {
+        return orderRepository.findById(orderId).orElse(null);
+    }
+
+    @Override
+    public Order updateOrder(Long orderId, Order updatedOrder) {
+        Optional<Order> existing = orderRepository.findById(orderId);
+        if (existing.isPresent()) {
+            Order order = existing.get();
+            order.setOrderStatus(updatedOrder.getOrderStatus());
+            order.setPaymentStatus(updatedOrder.getPaymentStatus());
+            order.setOrderTotal(updatedOrder.getOrderTotal());
+            return orderRepository.save(order);
+        }
+        return null;
+    }
+
+    @Override
+    public void deleteOrder(Long orderId) {
+        orderRepository.deleteById(orderId);
+    }
+
+    @Override
+    public PaymentResponse getPaymentsByOrderId(Long orderId) {
+        return paymentClient.getPaymentByOrderId(orderId);
+    }
+}
+

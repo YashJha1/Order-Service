@@ -1,0 +1,17 @@
+package com.eci.orderservice.client;
+
+import com.eci.orderservice.dto.PaymentRequest;
+import com.eci.orderservice.dto.PaymentResponse;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.*;
+
+@FeignClient(name = "payment-service", url = "http://localhost:8083/v1/payments")
+public interface PaymentClient {
+
+    @PostMapping
+    PaymentResponse processPayment(@RequestBody PaymentRequest request);
+
+    @GetMapping("/order/{orderId}")
+    PaymentResponse getPaymentByOrderId(@PathVariable("orderId") Long orderId);
+}
+
